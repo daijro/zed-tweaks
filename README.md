@@ -15,7 +15,7 @@ Opinionated patches I use for Zed to help me migrate from VSCode.
 - Reduced the height of the breadcrumb bar to match the tabs height
 - The editor buffer does not render under the minimap & scrollbar anymore
 - Indent guidelines are shown on the first column like in VSCode
-- Adds a X button to close the agent panel
+- Adds an X button to close the agent panel
 
 
 ---
