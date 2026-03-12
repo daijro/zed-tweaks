@@ -1,0 +1,394 @@
+diff --git a/assets/settings/default.json b/assets/settings/default.json
+index d812673d9d..6148ec0ebf 100644
+--- a/assets/settings/default.json
++++ b/assets/settings/default.json
+@@ -741,6 +741,9 @@
+     "git_status": true,
+     // Amount of indentation for nested items.
+     "indent_size": 20,
++    // Font size for file and folder names in the project panel (in pixels).
++    // When not set, uses the default UI font size.
++    "font_size": null,
+     // Whether to reveal it in the project panel automatically,
+     // when a corresponding project entry becomes active.
+     // Gitignored entries are never auto revealed.
+diff --git a/crates/git_ui/src/git_panel.rs b/crates/git_ui/src/git_panel.rs
+index 8205f5ee7b..a2de57ab03 100644
+--- a/crates/git_ui/src/git_panel.rs
++++ b/crates/git_ui/src/git_panel.rs
+@@ -4873,12 +4873,28 @@ impl GitPanel {
+             )
+     }
+ 
+-    fn entry_label(&self, label: impl Into<SharedString>, color: Color) -> Label {
+-        Label::new(label.into()).color(color)
++    fn panel_font_size(&self, cx: &App) -> Option<f32> {
++        cx.global::<SettingsStore>()
++            .merged_settings()
++            .project_panel
++            .as_ref()
++            .and_then(|pp| pp.font_size)
++    }
++
++    fn entry_label(&self, label: impl Into<SharedString>, color: Color, cx: &App) -> Label {
++        Label::new(label.into())
++            .color(color)
++            .when_some(self.panel_font_size(cx), |this, size| {
++                this.size(LabelSize::Custom(rems_from_px(size)))
++            })
+     }
+ 
+-    fn list_item_height(&self) -> Rems {
+-        rems(1.75)
++    fn list_item_height(&self, cx: &App) -> Rems {
++        match self.panel_font_size(cx) {
++            // Default is rems(1.75) = 28px for 14px font, so 14px padding.
++            Some(size) => rems_from_px(size + 14.0),
++            None => rems(1.75),
++        }
+     }
+ 
+     fn render_list_header(
+@@ -4887,13 +4903,13 @@ impl GitPanel {
+         header: &GitHeaderEntry,
+         _: bool,
+         _: &Window,
+-        _: &Context<Self>,
++        cx: &Context<Self>,
+     ) -> AnyElement {
+         let id: ElementId = ElementId::Name(format!("header_{}", ix).into());
+ 
+         h_flex()
+             .id(id)
+-            .h(self.list_item_height())
++            .h(self.list_item_height(cx))
+             .w_full()
+             .items_end()
+             .px_3()
+@@ -5109,7 +5125,7 @@ impl GitPanel {
+             .map(|this| {
+                 if tree_view {
+                     this.pl(px(depth as f32 * TREE_INDENT)).child(
+-                        self.entry_label(display_name, label_color)
++                        self.entry_label(display_name, label_color, cx)
+                             .when(status.is_deleted(), Label::strikethrough)
+                             .truncate(),
+                     )
+@@ -5122,6 +5138,7 @@ impl GitPanel {
+                         path_style,
+                         git_path_style,
+                         status.is_deleted(),
++                        cx,
+                     ))
+                 }
+             });
+@@ -5130,7 +5147,7 @@ impl GitPanel {
+ 
+         h_flex()
+             .id(id)
+-            .h(self.list_item_height())
++            .h(self.list_item_height(cx))
+             .w_full()
+             .pl_3()
+             .pr_1()
+@@ -5303,11 +5320,11 @@ impl GitPanel {
+                     .size(IconSize::Small)
+                     .color(Color::Muted),
+             )
+-            .child(self.entry_label(entry.name.clone(), label_color).truncate());
++            .child(self.entry_label(entry.name.clone(), label_color, cx).truncate());
+ 
+         h_flex()
+             .id(id)
+-            .h(self.list_item_height())
++            .h(self.list_item_height(cx))
+             .min_w_0()
+             .w_full()
+             .pl_3()
+@@ -5380,6 +5397,7 @@ impl GitPanel {
+         path_style: PathStyle,
+         git_path_style: GitPathStyle,
+         strikethrough: bool,
++        cx: &App,
+     ) -> Div {
+         let file_name_first = git_path_style == GitPathStyle::FileNameFirst;
+         let file_path_first = git_path_style == GitPathStyle::FilePathFirst;
+@@ -5392,7 +5410,7 @@ impl GitPanel {
+             .when(file_path_first, |this| this.flex_row_reverse())
+             .child(
+                 div().flex_none().child(
+-                    self.entry_label(file_name, label_color)
++                    self.entry_label(file_name, label_color, cx)
+                         .when(strikethrough, Label::strikethrough),
+                 ),
+             )
+@@ -5404,7 +5422,7 @@ impl GitPanel {
+                 };
+ 
+                 this.child(
+-                    self.entry_label(path_name, path_color)
++                    self.entry_label(path_name, path_color, cx)
+                         .truncate_start()
+                         .when(strikethrough, Label::strikethrough),
+                 )
+diff --git a/crates/outline_panel/src/outline_panel.rs b/crates/outline_panel/src/outline_panel.rs
+index ec85fc14a2..7e2f433011 100644
+--- a/crates/outline_panel/src/outline_panel.rs
++++ b/crates/outline_panel/src/outline_panel.rs
+@@ -2295,6 +2295,9 @@ impl OutlinePanel {
+         let label_element = Label::new(label)
+             .single_line()
+             .color(color)
++            .when_some(self.panel_font_size(cx), |this, size| {
++                this.size(LabelSize::Custom(rems_from_px(size)))
++            })
+             .into_any_element();
+ 
+         Some(self.entry_element(
+@@ -2401,6 +2404,7 @@ impl OutlinePanel {
+         cx: &mut Context<Self>,
+     ) -> Stateful<Div> {
+         let settings = OutlinePanelSettings::get_global(cx);
++        let panel_font_size = self.panel_font_size(cx);
+         let is_active = match self.selected_entry() {
+             Some(PanelEntry::Fs(selected_entry)) => selected_entry == rendered_entry,
+             _ => false,
+@@ -2427,6 +2431,9 @@ impl OutlinePanel {
+                             .unwrap_or_default(),
+                     )
+                     .color(color)
++                    .when_some(panel_font_size, |this, size| {
++                        this.size(LabelSize::Custom(rems_from_px(size)))
++                    })
+                     .into_any_element(),
+                     icon.unwrap_or_else(empty_icon),
+                 )
+@@ -2459,6 +2466,9 @@ impl OutlinePanel {
+                             .unwrap_or_default(),
+                     )
+                     .color(color)
++                    .when_some(panel_font_size, |this, size| {
++                        this.size(LabelSize::Custom(rems_from_px(size)))
++                    })
+                     .into_any_element(),
+                     icon.unwrap_or_else(empty_icon),
+                 )
+@@ -2491,6 +2501,9 @@ impl OutlinePanel {
+                             .unwrap_or_default(),
+                     )
+                     .color(color)
++                    .when_some(panel_font_size, |this, size| {
++                        this.size(LabelSize::Custom(rems_from_px(size)))
++                    })
+                     .into_any_element(),
+                     icon.unwrap_or_else(empty_icon),
+                 )
+@@ -2547,6 +2560,7 @@ impl OutlinePanel {
+             }
+             .map(Icon::from_path)
+             .map(|icon| icon.color(color).into_any_element());
++            let panel_font_size = self.panel_font_size(cx);
+             (
+                 ElementId::from(
+                     folded_dir
+@@ -2563,6 +2577,9 @@ impl OutlinePanel {
+                         .unwrap_or_default(),
+                 )
+                 .color(color)
++                .when_some(panel_font_size, |this, size| {
++                    this.size(LabelSize::Custom(rems_from_px(size)))
++                })
+                 .into_any_element(),
+                 icon.unwrap_or_else(empty_icon),
+             )
+@@ -2672,6 +2689,14 @@ impl OutlinePanel {
+         ))
+     }
+ 
++    fn panel_font_size(&self, cx: &App) -> Option<f32> {
++        cx.global::<SettingsStore>()
++            .merged_settings()
++            .project_panel
++            .as_ref()
++            .and_then(|pp| pp.font_size)
++    }
++
+     fn entry_element(
+         &self,
+         rendered_entry: PanelEntry,
+@@ -2684,8 +2709,12 @@ impl OutlinePanel {
+         cx: &mut Context<OutlinePanel>,
+     ) -> Stateful<Div> {
+         let settings = OutlinePanelSettings::get_global(cx);
++        let panel_font_size = self.panel_font_size(cx);
+         div()
+-            .text_ui(cx)
++            .map(|this| match panel_font_size {
++                Some(size) => this.text_size(rems_from_px(size)),
++                None => this.text_ui(cx),
++            })
+             .id(item_id.clone())
+             .on_click({
+                 let clicked_entry = rendered_entry.clone();
+@@ -2715,7 +2744,16 @@ impl OutlinePanel {
+                     .child(
+                         h_flex()
+                             .child(h_flex().w(px(16.)).justify_center().child(icon_element))
+-                            .child(h_flex().h_6().child(label_element).ml_1()),
++                            .child(
++                                h_flex()
++                                    .map(|this| match panel_font_size {
++                                        // Default is h_6() = 24px for 14px font, so 10px padding.
++                                        Some(size) => this.h(rems_from_px(size + 10.0)),
++                                        None => this.h_6(),
++                                    })
++                                    .child(label_element)
++                                    .ml_1(),
++                            ),
+                     )
+                     .on_secondary_mouse_down(cx.listener(
+                         move |outline_panel, event: &MouseDownEvent, window, cx| {
+diff --git a/crates/project_panel/src/project_panel.rs b/crates/project_panel/src/project_panel.rs
+index 068fb8d71f..c52764c667 100644
+--- a/crates/project_panel/src/project_panel.rs
++++ b/crates/project_panel/src/project_panel.rs
+@@ -5655,7 +5655,10 @@ impl ProjectPanel {
+                         h_flex().h_6().w_full().child(self.filename_editor.clone())
+                     } else {
+                         h_flex()
+-                            .h_6()
++                            .when(settings.font_size.is_none(), |this| this.h_6())
++                            .when_some(settings.font_size, |this, size| {
++                                this.h(rems_from_px(f32::from(size) + 10.0))
++                            })
+                             .map(|this| match self.state.ancestors.get(&entry_id) {
+                                 Some(folded_ancestors) => {
+                                     this.children(self.render_folder_elements(
+@@ -5671,6 +5674,7 @@ impl ProjectPanel {
+                                         item_colors.drag_over,
+                                         folded_directory_drag_target,
+                                         filename_text_color,
++                                        settings.font_size,
+                                         cx,
+                                     ))
+                                 }
+@@ -5683,6 +5687,9 @@ impl ProjectPanel {
+                                             settings.bold_folder_labels && kind.is_dir(),
+                                             |this| this.weight(FontWeight::SEMIBOLD),
+                                         )
++                                        .when_some(settings.font_size, |this, size| {
++                                            this.size(LabelSize::Custom(rems_from_px(f32::from(size))))
++                                        })
+                                         .into_any_element(),
+                                 ),
+                             })
+@@ -5740,6 +5747,7 @@ impl ProjectPanel {
+         drag_over_color: Hsla,
+         folded_directory_drag_target: Option<FoldedDirectoryDragTarget>,
+         filename_text_color: Color,
++        font_size: Option<Pixels>,
+         cx: &Context<Self>,
+     ) -> impl Iterator<Item = AnyElement> {
+         let components = Path::new(&file_name)
+@@ -5852,6 +5860,9 @@ impl ProjectPanel {
+                                 })
+                                 .when(index == active_index && is_active_or_marked, |this| {
+                                     this.underline()
++                                })
++                                .when_some(font_size, |this, size| {
++                                    this.size(LabelSize::Custom(rems_from_px(f32::from(size))))
+                                 }),
+                         )
+                         .into_any()
+diff --git a/crates/project_panel/src/project_panel_settings.rs b/crates/project_panel/src/project_panel_settings.rs
+index 0d703c55c0..c2b56f4569 100644
+--- a/crates/project_panel/src/project_panel_settings.rs
++++ b/crates/project_panel/src/project_panel_settings.rs
+@@ -22,6 +22,7 @@ pub struct ProjectPanelSettings {
+     pub folder_icons: bool,
+     pub git_status: bool,
+     pub indent_size: f32,
++    pub font_size: Option<Pixels>,
+     pub indent_guides: IndentGuidesSettings,
+     pub sticky_scroll: bool,
+     pub auto_reveal_entries: bool,
+@@ -103,6 +104,7 @@ impl Settings for ProjectPanelSettings {
+                     .unwrap()
+                     .is_git_status_enabled(),
+             indent_size: project_panel.indent_size.unwrap(),
++            font_size: project_panel.font_size.map(px),
+             indent_guides: IndentGuidesSettings {
+                 show: project_panel.indent_guides.unwrap().show.unwrap(),
+             },
+diff --git a/crates/settings/src/settings_store.rs b/crates/settings/src/settings_store.rs
+index 26425faf11..b3625e0596 100644
+--- a/crates/settings/src/settings_store.rs
++++ b/crates/settings/src/settings_store.rs
+@@ -599,6 +599,10 @@ impl SettingsStore {
+         }
+     }
+ 
++    pub fn merged_settings(&self) -> &SettingsContent {
++        &self.merged_settings
++    }
++
+     pub fn get_overrides_for_field<T>(
+         &self,
+         target_file: SettingsFile,
+diff --git a/crates/settings/src/vscode_import.rs b/crates/settings/src/vscode_import.rs
+index 8a5a497d26..09f0368429 100644
+--- a/crates/settings/src/vscode_import.rs
++++ b/crates/settings/src/vscode_import.rs
+@@ -802,6 +802,7 @@ impl VsCodeSettings {
+             sticky_scroll: None,
+             auto_open: None,
+             diagnostic_badges: None,
++            font_size: None,
+         };
+ 
+         if let (Some(false), Some(false)) = (
+diff --git a/crates/settings_content/src/workspace.rs b/crates/settings_content/src/workspace.rs
+index 7262a83b38..1c59e20af8 100644
+--- a/crates/settings_content/src/workspace.rs
++++ b/crates/settings_content/src/workspace.rs
+@@ -690,6 +690,12 @@ pub struct ProjectPanelSettingsContent {
+     /// Default: 20
+     #[serde(serialize_with = "serialize_optional_f32_with_two_decimal_places")]
+     pub indent_size: Option<f32>,
++    /// Font size for file and folder names in the project panel (in pixels).
++    /// When not set, uses the default UI font size.
++    ///
++    /// Default: null
++    #[serde(serialize_with = "serialize_optional_f32_with_two_decimal_places")]
++    pub font_size: Option<f32>,
+     /// Whether to reveal it in the project panel automatically,
+     /// when a corresponding project entry becomes active.
+     /// Gitignored entries are never auto revealed.
+diff --git a/crates/workspace/src/dock.rs b/crates/workspace/src/dock.rs
+index 439c6df5ee..fc776b6521 100644
+--- a/crates/workspace/src/dock.rs
++++ b/crates/workspace/src/dock.rs
+@@ -846,6 +846,13 @@ impl Render for Dock {
+                 }
+             };
+ 
++            let panel_font_size = cx
++                .global::<SettingsStore>()
++                .merged_settings()
++                .project_panel
++                .as_ref()
++                .and_then(|pp| pp.font_size);
++
+             div()
+                 .key_context(dispatch_context)
+                 .track_focus(&self.focus_handle(cx))
+@@ -853,6 +860,9 @@ impl Render for Dock {
+                 .bg(cx.theme().colors().panel_background)
+                 .border_color(cx.theme().colors().border)
+                 .overflow_hidden()
++                .when_some(panel_font_size, |this, size| {
++                    this.text_size(rems_from_px(size))
++                })
+                 .map(|this| match self.position().axis() {
+                     Axis::Horizontal => this.w(size).h_full().flex_row(),
+                     Axis::Vertical => this.h(size).w_full().flex_col(),
