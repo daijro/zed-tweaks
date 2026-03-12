@@ -1,0 +1,499 @@
+diff --git a/crates/agent_ui/src/agent_panel.rs b/crates/agent_ui/src/agent_panel.rs
+index 1aefc99c02..a5760c600f 100644
+--- a/crates/agent_ui/src/agent_panel.rs
++++ b/crates/agent_ui/src/agent_panel.rs
+@@ -86,7 +86,7 @@ use ui::{
+ };
+ use util::ResultExt as _;
+ use workspace::{
+-    CollaboratorId, DraggedSelection, DraggedSidebar, DraggedTab, FocusWorkspaceSidebar,
++    self, CollaboratorId, DraggedSelection, DraggedSidebar, DraggedTab, FocusWorkspaceSidebar,
+     MultiWorkspace, SIDEBAR_RESIZE_HANDLE_SIZE, ToggleWorkspaceSidebar, ToggleZoom,
+     ToolbarItemView, Workspace, WorkspaceId,
+     dock::{DockPosition, Panel, PanelEvent},
+@@ -3463,6 +3463,21 @@ impl AgentPanel {
+             })
+     }
+ 
++    fn render_close_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
++        let dock_position = agent_panel_dock_position(cx);
++        let action = match dock_position {
++            DockPosition::Left => workspace::ToggleLeftDock.boxed_clone(),
++            DockPosition::Bottom => workspace::ToggleBottomDock.boxed_clone(),
++            DockPosition::Right => workspace::ToggleRightDock.boxed_clone(),
++        };
++        IconButton::new("close-dock", IconName::Close)
++            .icon_size(IconSize::Small)
++            .tooltip(Tooltip::text("Close Dock"))
++            .on_click(move |_, window, cx| {
++                window.dispatch_action(action.boxed_clone(), cx);
++            })
++    }
++
+     fn render_recent_entries_menu(
+         &self,
+         icon: IconName,
+@@ -4238,6 +4253,7 @@ impl AgentPanel {
+                             ))
+                         })
+                         .child(self.render_panel_options_menu(window, cx))
++                        .child(self.render_close_button(cx))
+                         .when(docked_right, |this| {
+                             this.children(self.render_sidebar_toggle(true, cx))
+                         }),
+@@ -4301,6 +4317,7 @@ impl AgentPanel {
+                             ))
+                         })
+                         .child(self.render_panel_options_menu(window, cx))
++                        .child(self.render_close_button(cx))
+                         .when(docked_right, |this| {
+                             this.children(self.render_sidebar_toggle(true, cx))
+                         }),
+@@ -4780,6 +4797,32 @@ impl Render for AgentPanel {
+             .on_action(cx.listener(Self::decrease_font_size))
+             .on_action(cx.listener(Self::reset_font_size))
+             .on_action(cx.listener(Self::toggle_zoom))
++            .on_scroll_wheel(cx.listener(|this, event: &gpui::ScrollWheelEvent, _window, cx| {
++                if event.modifiers.control || event.modifiers.platform {
++                    let delta_y: f32 = match event.delta {
++                        gpui::ScrollDelta::Pixels(pixels) => pixels.y.into(),
++                        gpui::ScrollDelta::Lines(lines) => lines.y,
++                    };
++                    let font_delta = if delta_y > 0.0 {
++                        px(1.0)
++                    } else if delta_y < 0.0 {
++                        px(-1.0)
++                    } else {
++                        return;
++                    };
++                    match this.active_view.which_font_size_used() {
++                        WhichFontSize::AgentFont => {
++                            theme::adjust_agent_ui_font_size(cx, |size| size + font_delta);
++                            theme::adjust_agent_buffer_font_size(cx, |size| size + font_delta);
++                        }
++                        WhichFontSize::BufferFont => {
++                            theme::adjust_buffer_font_size(cx, |size| size + font_delta);
++                        }
++                        WhichFontSize::None => {}
++                    }
++                    cx.stop_propagation();
++                }
++            }))
+             .on_action(cx.listener(|this, _: &ReauthenticateAgent, window, cx| {
+                 if let Some(thread_view) = this.active_connection_view() {
+                     thread_view.update(cx, |thread_view, cx| thread_view.reauthenticate(window, cx))
+diff --git a/crates/editor/src/element.rs b/crates/editor/src/element.rs
+index 5de14d8068..f819b29757 100644
+--- a/crates/editor/src/element.rs
++++ b/crates/editor/src/element.rs
+@@ -2975,7 +2975,7 @@ impl EditorElement {
+                         ScrollOffset::from(content_origin.x + total_width)
+                             - scroll_pixel_position.x,
+                     );
+-                    if start_x >= text_origin.x {
++                    if start_x + single_indent_width > text_origin.x {
+                         let (offset_y, length, display_row_range) =
+                             Self::calculate_indent_guide_bounds(
+                                 indent_guide.start_row..indent_guide.end_row,
+@@ -5922,6 +5922,18 @@ impl EditorElement {
+                     EditorMode::Minimap { .. } => true,
+                     _ => false,
+                 };
++                let scrollbar_right_margin = layout
++                    .minimap
++                    .as_ref()
++                    .map(|m| m.thumb_layout.hitbox.bounds.size.width)
++                    .unwrap_or_default()
++                    + layout
++                        .scrollbars_layout
++                        .as_ref()
++                        .and_then(|s| s.vertical.as_ref())
++                        .map(|v| v.hitbox.bounds.size.width)
++                        .unwrap_or_default();
++
+                 let mut active_rows = layout.active_rows.iter().peekable();
+                 while let Some((start_row, contains_non_empty_selection)) = active_rows.next() {
+                     let mut end_row = start_row.0;
+@@ -5945,11 +5957,12 @@ impl EditorElement {
+                                 }),
+                                 CurrentLineHighlight::Line => Some(Range {
+                                     start: layout.position_map.text_hitbox.bounds.left(),
+-                                    end: layout.position_map.text_hitbox.bounds.right(),
++                                    end: layout.position_map.text_hitbox.bounds.right()
++                                        - scrollbar_right_margin,
+                                 }),
+                                 CurrentLineHighlight::All => Some(Range {
+                                     start: layout.hitbox.left(),
+-                                    end: layout.hitbox.right(),
++                                    end: layout.hitbox.right() - scrollbar_right_margin,
+                                 }),
+                                 CurrentLineHighlight::None => None,
+                             };
+@@ -5982,7 +5995,7 @@ impl EditorElement {
+                                            highlight: crate::LineHighlight,
+                                            edges| {
+                     let mut origin_x = layout.hitbox.left();
+-                    let mut width = layout.hitbox.size.width;
++                    let mut width = layout.hitbox.size.width - scrollbar_right_margin;
+                     if !highlight.include_gutter {
+                         origin_x += layout.gutter_hitbox.size.width;
+                         width -= layout.gutter_hitbox.size.width;
+@@ -6518,9 +6531,22 @@ impl EditorElement {
+     }
+ 
+     fn paint_text(&mut self, layout: &mut EditorLayout, window: &mut Window, cx: &mut App) {
++        let mut text_clip_bounds = layout.position_map.text_hitbox.bounds;
++        let right_margin = layout
++            .minimap
++            .as_ref()
++            .map(|m| m.thumb_layout.hitbox.bounds.size.width)
++            .unwrap_or_default()
++            + layout
++                .scrollbars_layout
++                .as_ref()
++                .and_then(|s| s.vertical.as_ref())
++                .map(|v| v.hitbox.bounds.size.width)
++                .unwrap_or_default();
++        text_clip_bounds.size.width -= right_margin;
+         window.with_content_mask(
+             Some(ContentMask {
+-                bounds: layout.position_map.text_hitbox.bounds,
++                bounds: text_clip_bounds,
+             }),
+             |window| {
+                 let editor = self.editor.read(cx);
+@@ -7647,6 +7673,23 @@ impl EditorElement {
+                 .max(0.01);
+ 
+             move |event: &ScrollWheelEvent, phase, window, cx| {
++                if phase == DispatchPhase::Bubble
++                    && hitbox.should_handle_scroll(window)
++                    && (event.modifiers.control || event.modifiers.platform)
++                {
++                    let delta_y: f32 = match event.delta {
++                        ScrollDelta::Pixels(pixels) => pixels.y.into(),
++                        ScrollDelta::Lines(lines) => lines.y,
++                    };
++                    if delta_y > 0.0 {
++                        theme::adjust_buffer_font_size(cx, |size| size + px(1.0));
++                    } else if delta_y < 0.0 {
++                        theme::adjust_buffer_font_size(cx, |size| size - px(1.0));
++                    }
++                    cx.stop_propagation();
++                    return;
++                }
++
+                 let scroll_sensitivity = {
+                     if event.modifiers.alt {
+                         fast_scroll_sensitivity
+@@ -7969,7 +8012,7 @@ pub fn render_breadcrumb_text(
+     });
+ 
+     let breadcrumbs_stack = h_flex()
+-        .gap_1()
++        .gap_1p5()
+         .when(multibuffer_header, |this| {
+             this.pl_2()
+                 .border_l_1()
+diff --git a/crates/platform_title_bar/src/platforms/platform_linux.rs b/crates/platform_title_bar/src/platforms/platform_linux.rs
+index 0e7af80f80..24097beeac 100644
+--- a/crates/platform_title_bar/src/platforms/platform_linux.rs
++++ b/crates/platform_title_bar/src/platforms/platform_linux.rs
+@@ -18,7 +18,8 @@ impl RenderOnce for LinuxWindowControls {
+     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+         h_flex()
+             .id("generic-window-controls")
+-            .px_3()
++            .pl_3()
++            .pr_1p5()
+             .gap_3()
+             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+             .child(WindowControl::new(
+diff --git a/crates/terminal_view/src/terminal_element.rs b/crates/terminal_view/src/terminal_element.rs
+index dc01a05dbe..4ed1c94e6c 100644
+--- a/crates/terminal_view/src/terminal_element.rs
++++ b/crates/terminal_view/src/terminal_element.rs
+@@ -730,6 +730,20 @@ impl TerminalElement {
+             self.interactivity.on_scroll_wheel({
+                 let terminal_view = self.terminal_view.downgrade();
+                 move |e, window, cx| {
++                    if e.modifiers.control || e.modifiers.platform {
++                        let delta_y: f32 = match e.delta {
++                            gpui::ScrollDelta::Pixels(pixels) => pixels.y.into(),
++                            gpui::ScrollDelta::Lines(lines) => lines.y,
++                        };
++                        if delta_y > 0.0 {
++                            theme::adjust_buffer_font_size(cx, |size| size + px(1.0));
++                        } else if delta_y < 0.0 {
++                            theme::adjust_buffer_font_size(cx, |size| size - px(1.0));
++                        }
++                        cx.stop_propagation();
++                        return;
++                    }
++
+                     terminal_view
+                         .update(cx, |terminal_view, cx| {
+                             if matches!(terminal_view.mode, TerminalMode::Standalone)
+diff --git a/crates/theme/src/theme.rs b/crates/theme/src/theme.rs
+index ca330beee3..1f41d682dc 100644
+--- a/crates/theme/src/theme.rs
++++ b/crates/theme/src/theme.rs
+@@ -54,7 +54,7 @@ pub use ::settings::{
+ };
+ 
+ /// Defines window border radius for platforms that use client side decorations.
+-pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = px(10.0);
++pub const CLIENT_SIDE_DECORATION_ROUNDING: Pixels = px(0.0);
+ /// Defines window shadow size for platforms that use client side decorations.
+ pub const CLIENT_SIDE_DECORATION_SHADOW: Pixels = px(10.0);
+ 
+diff --git a/crates/title_bar/src/application_menu.rs b/crates/title_bar/src/application_menu.rs
+index 579e4dadbd..5b0ec0104a 100644
+--- a/crates/title_bar/src/application_menu.rs
++++ b/crates/title_bar/src/application_menu.rs
+@@ -202,7 +202,8 @@ impl ApplicationMenu {
+                     .with_handle(current_handle.clone()),
+             )
+             .on_hover(move |hover_enter, window, cx| {
+-                if *hover_enter && !current_handle.is_deployed() {
++                let any_menu_open = all_handles.iter().any(|h| h.is_deployed());
++                if *hover_enter && any_menu_open && !current_handle.is_deployed() {
+                     all_handles.iter().for_each(|h| h.hide(cx));
+ 
+                     // We need to defer this so that this menu handle can take focus from the previous menu
+diff --git a/crates/title_bar/src/title_bar.rs b/crates/title_bar/src/title_bar.rs
+index 916d58426b..284ba8afbb 100644
+--- a/crates/title_bar/src/title_bar.rs
++++ b/crates/title_bar/src/title_bar.rs
+@@ -39,7 +39,7 @@ use theme::ActiveTheme;
+ use title_bar_settings::TitleBarSettings;
+ use ui::{
+     Avatar, ButtonLike, ContextMenu, IconWithIndicator, Indicator, PopoverMenu, PopoverMenuHandle,
+-    TintColor, Tooltip, prelude::*, utils::platform_title_bar_height,
++    TintColor, Tooltip, prelude::*,
+ };
+ use update_version::UpdateVersion;
+ use util::ResultExt;
+@@ -179,7 +179,7 @@ impl Render for TitleBar {
+                             },
+                         )
+                         .children(self.render_restricted_mode(cx))
+-                        .when(render_project_items, |title_bar| {
++                        .when(render_project_items && !show_menus, |title_bar| {
+                             title_bar
+                                 .when(title_bar_settings.show_project_items, |title_bar| {
+                                     title_bar
+@@ -218,6 +218,13 @@ impl Render for TitleBar {
+                 })
+                 .gap_1()
+                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
++                .when(show_menus && title_bar_settings.show_branch_name, |this| {
++                    this.children(self.render_project_branch(cx))
++                })
++                .when(show_menus && title_bar_settings.show_project_items, |this| {
++                    this.children(self.render_project_host(cx))
++                        .child(self.render_project_name(window, cx))
++                })
+                 .children(self.render_call_controls(window, cx))
+                 .children(self.render_connection_status(status, cx))
+                 .child(self.update_version.clone())
+@@ -233,38 +240,15 @@ impl Render for TitleBar {
+         );
+ 
+         if show_menus {
+-            self.platform_titlebar.update(cx, |this, _| {
+-                this.set_children(
+-                    self.application_menu
+-                        .clone()
+-                        .map(|menu| menu.into_any_element()),
+-                );
+-            });
+-
+-            let height = platform_title_bar_height(window);
+-            let title_bar_color = self.platform_titlebar.update(cx, |platform_titlebar, cx| {
+-                platform_titlebar.title_bar_color(window, cx)
+-            });
+-
+-            v_flex()
+-                .w_full()
+-                .child(self.platform_titlebar.clone().into_any_element())
+-                .child(
+-                    h_flex()
+-                        .bg(title_bar_color)
+-                        .h(height)
+-                        .pl_2()
+-                        .justify_between()
+-                        .w_full()
+-                        .children(children),
+-                )
+-                .into_any_element()
+-        } else {
+-            self.platform_titlebar.update(cx, |this, _| {
+-                this.set_children(children);
+-            });
+-            self.platform_titlebar.clone().into_any_element()
++            if let Some(menu) = self.application_menu.clone() {
++                children.insert(0, menu.into_any_element());
++            }
+         }
++
++        self.platform_titlebar.update(cx, |this, _| {
++            this.set_children(children);
++        });
++        self.platform_titlebar.clone().into_any_element()
+     }
+ }
+ 
+diff --git a/crates/ui/src/traits/styled_ext.rs b/crates/ui/src/traits/styled_ext.rs
+index 849e56a024..e3cc9d1b17 100644
+--- a/crates/ui/src/traits/styled_ext.rs
++++ b/crates/ui/src/traits/styled_ext.rs
+@@ -5,7 +5,7 @@ use crate::prelude::*;
+ 
+ fn elevated<E: Styled>(this: E, cx: &App, index: ElevationIndex) -> E {
+     this.bg(cx.theme().colors().elevated_surface_background)
+-        .rounded_lg()
++        .rounded_none()
+         .border_1()
+         .border_color(cx.theme().colors().border_variant)
+         .shadow(index.shadow(cx))
+@@ -13,7 +13,7 @@ fn elevated<E: Styled>(this: E, cx: &App, index: ElevationIndex) -> E {
+ 
+ fn elevated_borderless<E: Styled>(this: E, cx: &mut App, index: ElevationIndex) -> E {
+     this.bg(cx.theme().colors().elevated_surface_background)
+-        .rounded_lg()
++        .rounded_none()
+         .shadow(index.shadow(cx))
+ }
+ 
+diff --git a/crates/workspace/src/pane.rs b/crates/workspace/src/pane.rs
+index 5f1177e58d..81f2425707 100644
+--- a/crates/workspace/src/pane.rs
++++ b/crates/workspace/src/pane.rs
+@@ -4125,34 +4125,53 @@ fn default_render_tab_bar_buttons(
+                     }))
+                 }),
+         )
+-        .child(
+-            PopoverMenu::new("pane-tab-bar-split")
+-                .trigger_with_tooltip(
++        .child({
++            let split_menu_handle = pane.split_item_context_menu_handle.clone();
++            div()
++                .child(
+                     IconButton::new("split", IconName::Split)
+                         .icon_size(IconSize::Small)
+-                        .disabled(!can_clone && !can_split_move),
+-                    Tooltip::text("Split Pane"),
++                        .disabled(!can_clone && !can_split_move)
++                        .on_click(cx.listener(move |_, _, window, cx| {
++                            window.dispatch_action(SplitRight::default().boxed_clone(), cx);
++                        }))
++                        .tooltip(|_window, cx| {
++                            Tooltip::for_action("Split Right", &SplitRight::default(), cx)
++                        }),
+                 )
+-                .anchor(Corner::TopRight)
+-                .with_handle(pane.split_item_context_menu_handle.clone())
+-                .menu(move |window, cx| {
+-                    ContextMenu::build(window, cx, |menu, _, _| {
+-                        let mode = SplitMode::MovePane;
+-                        if can_split_move {
+-                            menu.action("Split Right", SplitRight { mode }.boxed_clone())
+-                                .action("Split Left", SplitLeft { mode }.boxed_clone())
+-                                .action("Split Up", SplitUp { mode }.boxed_clone())
+-                                .action("Split Down", SplitDown { mode }.boxed_clone())
+-                        } else {
+-                            menu.action("Split Right", SplitRight::default().boxed_clone())
+-                                .action("Split Left", SplitLeft::default().boxed_clone())
+-                                .action("Split Up", SplitUp::default().boxed_clone())
+-                                .action("Split Down", SplitDown::default().boxed_clone())
+-                        }
+-                    })
+-                    .into()
+-                }),
+-        )
++                .on_mouse_down(MouseButton::Right, move |_, window, cx| {
++                    split_menu_handle.show(window, cx);
++                    cx.stop_propagation();
++                })
++                .child(
++                    PopoverMenu::new("pane-tab-bar-split")
++                        .anchor(Corner::TopRight)
++                        .with_handle(pane.split_item_context_menu_handle.clone())
++                        .menu(move |window, cx| {
++                            ContextMenu::build(window, cx, |menu, _, _| {
++                                let mode = SplitMode::MovePane;
++                                if can_split_move {
++                                    menu.action(
++                                        "Split Right",
++                                        SplitRight { mode }.boxed_clone(),
++                                    )
++                                    .action("Split Left", SplitLeft { mode }.boxed_clone())
++                                    .action("Split Up", SplitUp { mode }.boxed_clone())
++                                    .action("Split Down", SplitDown { mode }.boxed_clone())
++                                } else {
++                                    menu.action(
++                                        "Split Right",
++                                        SplitRight::default().boxed_clone(),
++                                    )
++                                    .action("Split Left", SplitLeft::default().boxed_clone())
++                                    .action("Split Up", SplitUp::default().boxed_clone())
++                                    .action("Split Down", SplitDown::default().boxed_clone())
++                                }
++                            })
++                            .into()
++                        }),
++                )
++        })
+         .child({
+             let zoomed = pane.is_zoomed();
+             IconButton::new("toggle_zoom", IconName::Maximize)
+diff --git a/crates/workspace/src/toolbar.rs b/crates/workspace/src/toolbar.rs
+index b14775f289..afa2d702c2 100644
+--- a/crates/workspace/src/toolbar.rs
++++ b/crates/workspace/src/toolbar.rs
+@@ -6,7 +6,7 @@ use gpui::{
+ use language::LanguageRegistry;
+ use std::sync::Arc;
+ use ui::prelude::*;
+-use ui::{h_flex, v_flex};
++use ui::{Tab, h_flex, v_flex};
+ 
+ pub struct PaneSearchBarCallbacks {
+     pub setup_search_bar:
+@@ -120,24 +120,20 @@ impl Render for Toolbar {
+         v_flex()
+             .group("toolbar")
+             .relative()
+-            .py(DynamicSpacing::Base06.rems(cx))
+             .px(DynamicSpacing::Base08.rems(cx))
+-            .when(has_left_items || has_right_items, |this| {
+-                this.gap(DynamicSpacing::Base06.rems(cx))
+-            })
+             .border_b_1()
+             .border_color(cx.theme().colors().border_variant)
+             .bg(cx.theme().colors().toolbar_background)
+             .when(has_left_items || has_right_items, |this| {
+                 this.child(
+                     h_flex()
+-                        .items_start()
++                        .h(Tab::container_height(cx))
++                        .items_center()
+                         .justify_between()
+                         .gap(DynamicSpacing::Base08.rems(cx))
+                         .when(has_left_items, |this| {
+                             this.child(
+                                 h_flex()
+-                                    .min_h_8()
+                                     .flex_auto()
+                                     .justify_start()
+                                     .overflow_x_hidden()
+@@ -147,7 +143,6 @@ impl Render for Toolbar {
+                         .when(has_right_items, |this| {
+                             this.child(
+                                 h_flex()
+-                                    .h_8()
+                                     .flex_row_reverse()
+                                     .when(has_left_items, |this| this.flex_none())
+                                     .justify_end()

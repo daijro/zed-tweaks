@@ -1,0 +1,14 @@
+diff --git a/crates/title_bar/src/application_menu.rs b/crates/title_bar/src/application_menu.rs
+index 579e4dadbd..5b0ec0104a 100644
+--- a/crates/title_bar/src/application_menu.rs
++++ b/crates/title_bar/src/application_menu.rs
+@@ -202,7 +202,8 @@ impl ApplicationMenu {
+                     .with_handle(current_handle.clone()),
+             )
+             .on_hover(move |hover_enter, window, cx| {
+-                if *hover_enter && !current_handle.is_deployed() {
++                let any_menu_open = all_handles.iter().any(|h| h.is_deployed());
++                if *hover_enter && any_menu_open && !current_handle.is_deployed() {
+                     all_handles.iter().for_each(|h| h.hide(cx));
+ 
+                     // We need to defer this so that this menu handle can take focus from the previous menu

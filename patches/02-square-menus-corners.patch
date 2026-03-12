@@ -1,0 +1,22 @@
+diff --git a/crates/ui/src/traits/styled_ext.rs b/crates/ui/src/traits/styled_ext.rs
+index 849e56a024..e3cc9d1b17 100644
+--- a/crates/ui/src/traits/styled_ext.rs
++++ b/crates/ui/src/traits/styled_ext.rs
+@@ -5,7 +5,7 @@ use crate::prelude::*;
+ 
+ fn elevated<E: Styled>(this: E, cx: &App, index: ElevationIndex) -> E {
+     this.bg(cx.theme().colors().elevated_surface_background)
+-        .rounded_lg()
++        .rounded_none()
+         .border_1()
+         .border_color(cx.theme().colors().border_variant)
+         .shadow(index.shadow(cx))
+@@ -13,7 +13,7 @@ fn elevated<E: Styled>(this: E, cx: &App, index: ElevationIndex) -> E {
+ 
+ fn elevated_borderless<E: Styled>(this: E, cx: &mut App, index: ElevationIndex) -> E {
+     this.bg(cx.theme().colors().elevated_surface_background)
+-        .rounded_lg()
++        .rounded_none()
+         .shadow(index.shadow(cx))
+ }
+ 

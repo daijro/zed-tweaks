@@ -1,0 +1,90 @@
+diff --git a/crates/agent_ui/src/agent_panel.rs b/crates/agent_ui/src/agent_panel.rs
+index 1aefc99c02..9388d703d8 100644
+--- a/crates/agent_ui/src/agent_panel.rs
++++ b/crates/agent_ui/src/agent_panel.rs
+@@ -4780,6 +4780,32 @@ impl Render for AgentPanel {
+             .on_action(cx.listener(Self::decrease_font_size))
+             .on_action(cx.listener(Self::reset_font_size))
+             .on_action(cx.listener(Self::toggle_zoom))
++            .on_scroll_wheel(cx.listener(|this, event: &gpui::ScrollWheelEvent, _window, cx| {
++                if event.modifiers.control || event.modifiers.platform {
++                    let delta_y: f32 = match event.delta {
++                        gpui::ScrollDelta::Pixels(pixels) => pixels.y.into(),
++                        gpui::ScrollDelta::Lines(lines) => lines.y,
++                    };
++                    let font_delta = if delta_y > 0.0 {
++                        px(1.0)
++                    } else if delta_y < 0.0 {
++                        px(-1.0)
++                    } else {
++                        return;
++                    };
++                    match this.active_view.which_font_size_used() {
++                        WhichFontSize::AgentFont => {
++                            theme::adjust_agent_ui_font_size(cx, |size| size + font_delta);
++                            theme::adjust_agent_buffer_font_size(cx, |size| size + font_delta);
++                        }
++                        WhichFontSize::BufferFont => {
++                            theme::adjust_buffer_font_size(cx, |size| size + font_delta);
++                        }
++                        WhichFontSize::None => {}
++                    }
++                    cx.stop_propagation();
++                }
++            }))
+             .on_action(cx.listener(|this, _: &ReauthenticateAgent, window, cx| {
+                 if let Some(thread_view) = this.active_connection_view() {
+                     thread_view.update(cx, |thread_view, cx| thread_view.reauthenticate(window, cx))
+diff --git a/crates/editor/src/element.rs b/crates/editor/src/element.rs
+index 5de14d8068..9b52ec140f 100644
+--- a/crates/editor/src/element.rs
++++ b/crates/editor/src/element.rs
+@@ -7647,6 +7647,23 @@ impl EditorElement {
+                 .max(0.01);
+ 
+             move |event: &ScrollWheelEvent, phase, window, cx| {
++                if phase == DispatchPhase::Bubble
++                    && hitbox.should_handle_scroll(window)
++                    && (event.modifiers.control || event.modifiers.platform)
++                {
++                    let delta_y: f32 = match event.delta {
++                        ScrollDelta::Pixels(pixels) => pixels.y.into(),
++                        ScrollDelta::Lines(lines) => lines.y,
++                    };
++                    if delta_y > 0.0 {
++                        theme::adjust_buffer_font_size(cx, |size| size + px(1.0));
++                    } else if delta_y < 0.0 {
++                        theme::adjust_buffer_font_size(cx, |size| size - px(1.0));
++                    }
++                    cx.stop_propagation();
++                    return;
++                }
++
+                 let scroll_sensitivity = {
+                     if event.modifiers.alt {
+                         fast_scroll_sensitivity
+diff --git a/crates/terminal_view/src/terminal_element.rs b/crates/terminal_view/src/terminal_element.rs
+index dc01a05dbe..4ed1c94e6c 100644
+--- a/crates/terminal_view/src/terminal_element.rs
++++ b/crates/terminal_view/src/terminal_element.rs
+@@ -730,6 +730,20 @@ impl TerminalElement {
+             self.interactivity.on_scroll_wheel({
+                 let terminal_view = self.terminal_view.downgrade();
+                 move |e, window, cx| {
++                    if e.modifiers.control || e.modifiers.platform {
++                        let delta_y: f32 = match e.delta {
++                            gpui::ScrollDelta::Pixels(pixels) => pixels.y.into(),
++                            gpui::ScrollDelta::Lines(lines) => lines.y,
++                        };
++                        if delta_y > 0.0 {
++                            theme::adjust_buffer_font_size(cx, |size| size + px(1.0));
++                        } else if delta_y < 0.0 {
++                            theme::adjust_buffer_font_size(cx, |size| size - px(1.0));
++                        }
++                        cx.stop_propagation();
++                        return;
++                    }
++
+                     terminal_view
+                         .update(cx, |terminal_view, cx| {
+                             if matches!(terminal_view.mode, TerminalMode::Standalone)

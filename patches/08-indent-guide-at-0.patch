@@ -1,0 +1,13 @@
+diff --git a/crates/editor/src/element.rs b/crates/editor/src/element.rs
+index 472dc031fc..beeed85bf0 100644
+--- a/crates/editor/src/element.rs
++++ b/crates/editor/src/element.rs
+@@ -2975,7 +2975,7 @@ impl EditorElement {
+                         ScrollOffset::from(content_origin.x + total_width)
+                             - scroll_pixel_position.x,
+                     );
+-                    if start_x >= text_origin.x {
++                    if start_x + single_indent_width > text_origin.x {
+                         let (offset_y, length, display_row_range) =
+                             Self::calculate_indent_guide_bounds(
+                                 indent_guide.start_row..indent_guide.end_row,

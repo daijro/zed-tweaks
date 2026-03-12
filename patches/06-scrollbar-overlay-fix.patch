@@ -1,0 +1,71 @@
+diff --git a/crates/editor/src/element.rs b/crates/editor/src/element.rs
+index 9b52ec140f..472dc031fc 100644
+--- a/crates/editor/src/element.rs
++++ b/crates/editor/src/element.rs
+@@ -5922,6 +5922,18 @@ impl EditorElement {
+                     EditorMode::Minimap { .. } => true,
+                     _ => false,
+                 };
++                let scrollbar_right_margin = layout
++                    .minimap
++                    .as_ref()
++                    .map(|m| m.thumb_layout.hitbox.bounds.size.width)
++                    .unwrap_or_default()
++                    + layout
++                        .scrollbars_layout
++                        .as_ref()
++                        .and_then(|s| s.vertical.as_ref())
++                        .map(|v| v.hitbox.bounds.size.width)
++                        .unwrap_or_default();
++
+                 let mut active_rows = layout.active_rows.iter().peekable();
+                 while let Some((start_row, contains_non_empty_selection)) = active_rows.next() {
+                     let mut end_row = start_row.0;
+@@ -5945,11 +5957,12 @@ impl EditorElement {
+                                 }),
+                                 CurrentLineHighlight::Line => Some(Range {
+                                     start: layout.position_map.text_hitbox.bounds.left(),
+-                                    end: layout.position_map.text_hitbox.bounds.right(),
++                                    end: layout.position_map.text_hitbox.bounds.right()
++                                        - scrollbar_right_margin,
+                                 }),
+                                 CurrentLineHighlight::All => Some(Range {
+                                     start: layout.hitbox.left(),
+-                                    end: layout.hitbox.right(),
++                                    end: layout.hitbox.right() - scrollbar_right_margin,
+                                 }),
+                                 CurrentLineHighlight::None => None,
+                             };
+@@ -5982,7 +5995,7 @@ impl EditorElement {
+                                            highlight: crate::LineHighlight,
+                                            edges| {
+                     let mut origin_x = layout.hitbox.left();
+-                    let mut width = layout.hitbox.size.width;
++                    let mut width = layout.hitbox.size.width - scrollbar_right_margin;
+                     if !highlight.include_gutter {
+                         origin_x += layout.gutter_hitbox.size.width;
+                         width -= layout.gutter_hitbox.size.width;
+@@ -6518,9 +6531,22 @@ impl EditorElement {
+     }
+ 
+     fn paint_text(&mut self, layout: &mut EditorLayout, window: &mut Window, cx: &mut App) {
++        let mut text_clip_bounds = layout.position_map.text_hitbox.bounds;
++        let right_margin = layout
++            .minimap
++            .as_ref()
++            .map(|m| m.thumb_layout.hitbox.bounds.size.width)
++            .unwrap_or_default()
++            + layout
++                .scrollbars_layout
++                .as_ref()
++                .and_then(|s| s.vertical.as_ref())
++                .map(|v| v.hitbox.bounds.size.width)
++                .unwrap_or_default();
++        text_clip_bounds.size.width -= right_margin;
+         window.with_content_mask(
+             Some(ContentMask {
+-                bounds: layout.position_map.text_hitbox.bounds,
++                bounds: text_clip_bounds,
+             }),
+             |window| {
+                 let editor = self.editor.read(cx);

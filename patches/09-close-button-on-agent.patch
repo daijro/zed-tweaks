@@ -1,0 +1,51 @@
+diff --git a/crates/agent_ui/src/agent_panel.rs b/crates/agent_ui/src/agent_panel.rs
+index 9388d703d8..a5760c600f 100644
+--- a/crates/agent_ui/src/agent_panel.rs
++++ b/crates/agent_ui/src/agent_panel.rs
+@@ -86,7 +86,7 @@ use ui::{
+ };
+ use util::ResultExt as _;
+ use workspace::{
+-    CollaboratorId, DraggedSelection, DraggedSidebar, DraggedTab, FocusWorkspaceSidebar,
++    self, CollaboratorId, DraggedSelection, DraggedSidebar, DraggedTab, FocusWorkspaceSidebar,
+     MultiWorkspace, SIDEBAR_RESIZE_HANDLE_SIZE, ToggleWorkspaceSidebar, ToggleZoom,
+     ToolbarItemView, Workspace, WorkspaceId,
+     dock::{DockPosition, Panel, PanelEvent},
+@@ -3463,6 +3463,21 @@ impl AgentPanel {
+             })
+     }
+ 
++    fn render_close_button(&self, cx: &mut Context<Self>) -> impl IntoElement {
++        let dock_position = agent_panel_dock_position(cx);
++        let action = match dock_position {
++            DockPosition::Left => workspace::ToggleLeftDock.boxed_clone(),
++            DockPosition::Bottom => workspace::ToggleBottomDock.boxed_clone(),
++            DockPosition::Right => workspace::ToggleRightDock.boxed_clone(),
++        };
++        IconButton::new("close-dock", IconName::Close)
++            .icon_size(IconSize::Small)
++            .tooltip(Tooltip::text("Close Dock"))
++            .on_click(move |_, window, cx| {
++                window.dispatch_action(action.boxed_clone(), cx);
++            })
++    }
++
+     fn render_recent_entries_menu(
+         &self,
+         icon: IconName,
+@@ -4238,6 +4253,7 @@ impl AgentPanel {
+                             ))
+                         })
+                         .child(self.render_panel_options_menu(window, cx))
++                        .child(self.render_close_button(cx))
+                         .when(docked_right, |this| {
+                             this.children(self.render_sidebar_toggle(true, cx))
+                         }),
+@@ -4301,6 +4317,7 @@ impl AgentPanel {
+                             ))
+                         })
+                         .child(self.render_panel_options_menu(window, cx))
++                        .child(self.render_close_button(cx))
+                         .when(docked_right, |this| {
+                             this.children(self.render_sidebar_toggle(true, cx))
+                         }),

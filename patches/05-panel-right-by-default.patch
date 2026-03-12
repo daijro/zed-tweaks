@@ -1,0 +1,83 @@
+diff --git a/crates/workspace/src/pane.rs b/crates/workspace/src/pane.rs
+index 5f1177e58d..81f2425707 100644
+--- a/crates/workspace/src/pane.rs
++++ b/crates/workspace/src/pane.rs
+@@ -4125,34 +4125,53 @@ fn default_render_tab_bar_buttons(
+                     }))
+                 }),
+         )
+-        .child(
+-            PopoverMenu::new("pane-tab-bar-split")
+-                .trigger_with_tooltip(
++        .child({
++            let split_menu_handle = pane.split_item_context_menu_handle.clone();
++            div()
++                .child(
+                     IconButton::new("split", IconName::Split)
+                         .icon_size(IconSize::Small)
+-                        .disabled(!can_clone && !can_split_move),
+-                    Tooltip::text("Split Pane"),
++                        .disabled(!can_clone && !can_split_move)
++                        .on_click(cx.listener(move |_, _, window, cx| {
++                            window.dispatch_action(SplitRight::default().boxed_clone(), cx);
++                        }))
++                        .tooltip(|_window, cx| {
++                            Tooltip::for_action("Split Right", &SplitRight::default(), cx)
++                        }),
+                 )
+-                .anchor(Corner::TopRight)
+-                .with_handle(pane.split_item_context_menu_handle.clone())
+-                .menu(move |window, cx| {
+-                    ContextMenu::build(window, cx, |menu, _, _| {
+-                        let mode = SplitMode::MovePane;
+-                        if can_split_move {
+-                            menu.action("Split Right", SplitRight { mode }.boxed_clone())
+-                                .action("Split Left", SplitLeft { mode }.boxed_clone())
+-                                .action("Split Up", SplitUp { mode }.boxed_clone())
+-                                .action("Split Down", SplitDown { mode }.boxed_clone())
+-                        } else {
+-                            menu.action("Split Right", SplitRight::default().boxed_clone())
+-                                .action("Split Left", SplitLeft::default().boxed_clone())
+-                                .action("Split Up", SplitUp::default().boxed_clone())
+-                                .action("Split Down", SplitDown::default().boxed_clone())
+-                        }
+-                    })
+-                    .into()
+-                }),
+-        )
++                .on_mouse_down(MouseButton::Right, move |_, window, cx| {
++                    split_menu_handle.show(window, cx);
++                    cx.stop_propagation();
++                })
++                .child(
++                    PopoverMenu::new("pane-tab-bar-split")
++                        .anchor(Corner::TopRight)
++                        .with_handle(pane.split_item_context_menu_handle.clone())
++                        .menu(move |window, cx| {
++                            ContextMenu::build(window, cx, |menu, _, _| {
++                                let mode = SplitMode::MovePane;
++                                if can_split_move {
++                                    menu.action(
++                                        "Split Right",
++                                        SplitRight { mode }.boxed_clone(),
++                                    )
++                                    .action("Split Left", SplitLeft { mode }.boxed_clone())
++                                    .action("Split Up", SplitUp { mode }.boxed_clone())
++                                    .action("Split Down", SplitDown { mode }.boxed_clone())
++                                } else {
++                                    menu.action(
++                                        "Split Right",
++                                        SplitRight::default().boxed_clone(),
++                                    )
++                                    .action("Split Left", SplitLeft::default().boxed_clone())
++                                    .action("Split Up", SplitUp::default().boxed_clone())
++                                    .action("Split Down", SplitDown::default().boxed_clone())
++                                }
++                            })
++                            .into()
++                        }),
++                )
++        })
+         .child({
+             let zoomed = pane.is_zoomed();
+             IconButton::new("toggle_zoom", IconName::Maximize)

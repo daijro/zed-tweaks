@@ -1,0 +1,14 @@
+diff --git a/crates/platform_title_bar/src/platforms/platform_linux.rs b/crates/platform_title_bar/src/platforms/platform_linux.rs
+index 0e7af80f80..24097beeac 100644
+--- a/crates/platform_title_bar/src/platforms/platform_linux.rs
++++ b/crates/platform_title_bar/src/platforms/platform_linux.rs
+@@ -18,7 +18,8 @@ impl RenderOnce for LinuxWindowControls {
+     fn render(self, window: &mut Window, cx: &mut App) -> impl IntoElement {
+         h_flex()
+             .id("generic-window-controls")
+-            .px_3()
++            .pl_3()
++            .pr_1p5()
+             .gap_3()
+             .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+             .child(WindowControl::new(

@@ -1,0 +1,83 @@
+diff --git a/crates/title_bar/src/title_bar.rs b/crates/title_bar/src/title_bar.rs
+index 916d58426b..284ba8afbb 100644
+--- a/crates/title_bar/src/title_bar.rs
++++ b/crates/title_bar/src/title_bar.rs
+@@ -39,7 +39,7 @@ use theme::ActiveTheme;
+ use title_bar_settings::TitleBarSettings;
+ use ui::{
+     Avatar, ButtonLike, ContextMenu, IconWithIndicator, Indicator, PopoverMenu, PopoverMenuHandle,
+-    TintColor, Tooltip, prelude::*, utils::platform_title_bar_height,
++    TintColor, Tooltip, prelude::*,
+ };
+ use update_version::UpdateVersion;
+ use util::ResultExt;
+@@ -179,7 +179,7 @@ impl Render for TitleBar {
+                             },
+                         )
+                         .children(self.render_restricted_mode(cx))
+-                        .when(render_project_items, |title_bar| {
++                        .when(render_project_items && !show_menus, |title_bar| {
+                             title_bar
+                                 .when(title_bar_settings.show_project_items, |title_bar| {
+                                     title_bar
+@@ -218,6 +218,13 @@ impl Render for TitleBar {
+                 })
+                 .gap_1()
+                 .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
++                .when(show_menus && title_bar_settings.show_branch_name, |this| {
++                    this.children(self.render_project_branch(cx))
++                })
++                .when(show_menus && title_bar_settings.show_project_items, |this| {
++                    this.children(self.render_project_host(cx))
++                        .child(self.render_project_name(window, cx))
++                })
+                 .children(self.render_call_controls(window, cx))
+                 .children(self.render_connection_status(status, cx))
+                 .child(self.update_version.clone())
+@@ -233,38 +240,15 @@ impl Render for TitleBar {
+         );
+ 
+         if show_menus {
+-            self.platform_titlebar.update(cx, |this, _| {
+-                this.set_children(
+-                    self.application_menu
+-                        .clone()
+-                        .map(|menu| menu.into_any_element()),
+-                );
+-            });
+-
+-            let height = platform_title_bar_height(window);
+-            let title_bar_color = self.platform_titlebar.update(cx, |platform_titlebar, cx| {
+-                platform_titlebar.title_bar_color(window, cx)
+-            });
+-
+-            v_flex()
+-                .w_full()
+-                .child(self.platform_titlebar.clone().into_any_element())
+-                .child(
+-                    h_flex()
+-                        .bg(title_bar_color)
+-                        .h(height)
+-                        .pl_2()
+-                        .justify_between()
+-                        .w_full()
+-                        .children(children),
+-                )
+-                .into_any_element()
+-        } else {
+-            self.platform_titlebar.update(cx, |this, _| {
+-                this.set_children(children);
+-            });
+-            self.platform_titlebar.clone().into_any_element()
++            if let Some(menu) = self.application_menu.clone() {
++                children.insert(0, menu.into_any_element());
++            }
+         }
++
++        self.platform_titlebar.update(cx, |this, _| {
++            this.set_children(children);
++        });
++        self.platform_titlebar.clone().into_any_element()
+     }
+ }
+ 
