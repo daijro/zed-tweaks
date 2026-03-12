@@ -891,3 +891,28 @@ index b14775f289..afa2d702c2 100644
                                      .flex_row_reverse()
                                      .when(has_left_items, |this| this.flex_none())
                                      .justify_end()
+diff --git a/crates/zed/src/zed/quick_action_bar/preview.rs b/crates/zed/src/zed/quick_action_bar/preview.rs
+index 01e2d164d7..be4665de3a 100644
+--- a/crates/zed/src/zed/quick_action_bar/preview.rs
++++ b/crates/zed/src/zed/quick_action_bar/preview.rs
+@@ -90,7 +90,7 @@ impl QuickActionBar {
+                     tooltip_text,
+                     Some(open_action_for_tooltip),
+                     format!(
+-                        "{} to open in a split",
++                        "{} to open in a new tab",
+                         text_for_keystroke(&alt_click.modifiers, &alt_click.key, cx)
+                     ),
+                     cx,
+@@ -100,9 +100,9 @@ impl QuickActionBar {
+                 if let Some(workspace) = workspace_handle.upgrade() {
+                     workspace.update(cx, |_, cx| {
+                         if window.modifiers().alt {
+-                            window.dispatch_action(open_to_side_action.boxed_clone(), cx);
+-                        } else {
+                             window.dispatch_action(open_action.boxed_clone(), cx);
++                        } else {
++                            window.dispatch_action(open_to_side_action.boxed_clone(), cx);
+                         }
+                     });
+                 }

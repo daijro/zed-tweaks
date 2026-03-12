@@ -17,6 +17,7 @@ Opinionated patches I use for Zed to help me migrate from VSCode.
 - Indent guidelines are shown on the first column like in VSCode
 - Adds an X button to close the agent panel
 - Added a `project_panel.font_size` setting to change the font size of text in the left panel (File browser, Git, Outline, etc.)
+- Markdown Preview button opens to the side by default. Alt+Click to open in a new tab
 
 
 ---
